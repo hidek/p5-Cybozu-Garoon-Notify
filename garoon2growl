@@ -8,6 +8,7 @@ use Cybozu::Garoon::Notify;
 use DateTime;
 use DateTime::Duration;
 use Mac::Growl ();
+use Try::Tiny;
 
 my $APP_NAME = 'garoon2growl';
 my $NOTIFICATION_NAME ='garoon-notification';
@@ -41,8 +42,12 @@ my $sched_cache = Cache::LRU->new(size => 1024);
 
 # the main loop
 while (1) {
-    notify_whatsnew($gr);
-    notify_schedule($gr);
+    try {
+	notify_whatsnew($gr);
+	notify_schedule($gr);
+    } catch {
+	warn $_;
+    };
     sleep $config->param('check_interval');
 }
 
