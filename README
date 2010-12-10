@@ -1,0 +1,17 @@
+NAME
+    GaroonNotify -
+
+SYNOPSIS
+      use GaroonNotify;
+
+DESCRIPTION
+    GaroonNotify is
+
+AUTHOR
+    Hideo Kimura <hide@hide-k.net>
+
+SEE ALSO
+LICENSE
+    This library is free software; you can redistribute it and/or modify it
+    under the same terms as Perl itself.
+

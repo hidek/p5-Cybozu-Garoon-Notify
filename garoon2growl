@@ -1,0 +1,99 @@
+#! /usr/bin/perl
+
+use strict;
+use warnings;
+use Cache::LRU;
+use Config::Simple;
+use Cybozu::Garoon::Notify;
+use DateTime;
+use DateTime::Duration;
+use Mac::Growl ();
+
+my $APP_NAME = 'garoon2growl';
+my $NOTIFICATION_NAME ='garoon-notification';
+
+# setup config
+my $config = do {
+    my $config_fn = shift(@ARGV) || "$ENV{HOME}/etc/cybozu-garoon-notify.ini";
+    Config::Simple->new($config_fn)
+            or die "failed to read $config_fn:$!";
+};
+for my $n (qw(url username password check_interval schedule_notify_before)) {
+    die "mandatory parameter $n is missing in the ini file"
+        unless $config->param($n);
+}
+
+# setup growl
+Mac::Growl::RegisterNotifications(
+    $APP_NAME,
+    [ $NOTIFICATION_NAME ],
+    [ $NOTIFICATION_NAME ],
+);
+
+# instantiate
+my $gr = Cybozu::Garoon::Notify->new(
+    map { $_ => $config->param($_) } qw(url username password),
+);
+
+# caches used prevent notifying more than once
+my $whatsnew_cache = Cache::LRU->new(size => 1024);
+my $sched_cache = Cache::LRU->new(size => 1024);
+
+# the main loop
+while (1) {
+    notify_whatsnew($gr);
+    notify_schedule($gr);
+    sleep $config->param('check_interval');
+}
+
+# handle whatsnew notifications
+sub notify_whatsnew {
+    my $gr = shift;
+    my @topics = $gr->get_whatsnew();
+    for my $topic (@topics) {
+        my $renotify_key = join '::', $topic->{link}, $topic->{updated};
+        if (! $whatsnew_cache->get($renotify_key)) {
+            $whatsnew_cache->set($renotify_key => 1);
+            Mac::Growl::PostNotification(
+                $APP_NAME,
+                $NOTIFICATION_NAME,
+                $topic->{subject},
+                $topic->{content} || '',
+            );
+        }
+    }
+}
+
+# handle schedule notifications
+sub notify_schedule {
+    my $gr = shift;
+    my @scheds = $gr->get_schedule;
+    my $now  = DateTime->now(time_zone => 'Asia/Tokyo');
+    my $notify_before = DateTime::Duration->new(
+        seconds => $config->param('schedule_notify_before'),
+    );
+    for my $sched (@scheds) {
+        my $s_dt = $gr->datetime_fmt->parse_datetime($sched->{startdate})
+            or next;
+        next
+            if $now + $notify_before < $s_dt;
+        my $e_dt = $gr->datetime_fmt->parse_datetime($sched->{enddate})
+            || '';
+        my $renotify_key = join '::', $s_dt, $e_dt, $sched->{title};
+        if (! $sched_cache->get($renotify_key)) {
+            $sched_cache->set($renotify_key => 1);
+            Mac::Growl::PostNotification(
+                $APP_NAME,
+                $NOTIFICATION_NAME,
+                sprintf(
+                    '%s - %s',
+                    $s_dt->strftime('%Y/%m/%d %H:%M'),
+                    $e_dt ? $e_dt->strftime('%Y/%m/%d %H:%M') : '',
+                ),
+                $sched->{title} . (
+                    $sched->{facility} ? " ($sched->{facility})" : '',
+                ),
+            );
+        }
+    }
+}
