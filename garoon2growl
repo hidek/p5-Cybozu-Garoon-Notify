@@ -61,11 +61,13 @@ sub notify_whatsnew {
         my $renotify_key = join '::', $topic->{link}, $topic->{updated};
         if (! $whatsnew_cache->get($renotify_key)) {
             $whatsnew_cache->set($renotify_key => 1);
+            my $content = $topic->{author} ? $topic->{author}.":\n" : '';
+            $content .= $topic->{content} if($topic->{content});
             Mac::Growl::PostNotification(
                 $APP_NAME,
                 $NOTIFICATION_NAME,
                 $topic->{subject},
-                $topic->{content} || '',
+                $content,
                 undef, undef, $config->param('growl_icon') || undef
             );
         }
